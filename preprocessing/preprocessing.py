@@ -11,6 +11,8 @@ load_dotenv(".env.local")
 
 RAW_PATH = Path("data/raw/battles.jsonl")
 OUT_PATH = Path("data/processed/battles_cards.csv")
+CARD_LIST_PATH = Path("data/processed/card_list.json")
+CARD_LIST_PATH.parent.mkdir(exist_ok=True)
 OUT_PATH.parent.mkdir(exist_ok=True)
 
 def load_card_list():
@@ -47,8 +49,8 @@ def preprocess_battle(record, card_list):
         "team_trophies": team.get("startingTrophies"),
         "opp_trophies": opp.get("startingTrophies"),
         "trophy_diff": (team.get("startingTrophies") or 0) - (opp.get("startingTrophies") or 0),
-        "team_avg_elixir": sum(c.get("elixirCost", 0) for c in team_cards) / len(team_cards),
-        "opp_avg_elixir": sum(c.get("elixirCost", 0) for c in opp_cards) / len(opp_cards),
+        "team_avg_elixir": sum(c.get("elixirCost", 0) for c in team_cards) / len(team_cards) if team_cards else 0,
+        "opp_avg_elixir": sum(c.get("elixirCost", 0) for c in opp_cards) / len(opp_cards) if opp_cards else 0,
     }
 
     # One-hot card features
@@ -56,11 +58,11 @@ def preprocess_battle(record, card_list):
     row.update(create_one_hot(opp_cards, card_list, "opp"))
 
     # Optional interaction features
-    for card in card_list:
-        team_key = f"team_has_{card.replace(' ', '_')}"
-        opp_key = f"opp_has_{card.replace(' ', '_')}"
-        row[f"{card.replace(' ', '_')}_diff"] = row.get(team_key, 0) - row.get(opp_key, 0)
-        row[f"{card.replace(' ', '_')}_both"] = row.get(team_key, 0) * row.get(opp_key, 0)
+    # for card in card_list:
+    #     team_key = f"team_has_{card.replace(' ', '_')}"
+    #     opp_key = f"opp_has_{card.replace(' ', '_')}"
+    #     row[f"{card.replace(' ', '_')}_diff"] = row.get(team_key, 0) - row.get(opp_key, 0)
+    #     row[f"{card.replace(' ', '_')}_both"] = row.get(team_key, 0) * row.get(opp_key, 0)
 
     # Label win/loss
     team_crowns = team.get("crowns", 0)
@@ -71,6 +73,11 @@ def preprocess_battle(record, card_list):
 
 def main():
     card_list = load_card_list()
+    card_list = sorted(card_list)
+    
+    with CARD_LIST_PATH.open('w', encoding="utf-8") as f:
+        json.dump(card_list, f, indent=4)
+        
     print("Loaded", len(card_list), "cards.")
 
     rows = []
