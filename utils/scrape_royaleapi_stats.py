@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 
 # Where to save the scraped stats
-OUT_FILE = Path("processed/card_stats.json")
+OUT_FILE = Path("data/processed/card_stats.json")
 
 # RoyaleAPI Ladder card stats URL
 ROYALEAPI_STATS_URL = "https://royaleapi.com/cards/popular?cat=Ladder&lang=en&mode=grid&sort=usage&time=7d"
@@ -63,6 +63,7 @@ def scrape_card_stats():
             }
 
     if stats_map:
+        OUT_FILE.parent.mkdir(parents=True, exist_ok=True)
         with open(OUT_FILE, "w", encoding="utf-8") as f:
             json.dump(stats_map, f, indent=2)
         print(f"Saved card stats to {OUT_FILE}")

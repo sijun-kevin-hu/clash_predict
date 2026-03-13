@@ -20,21 +20,21 @@ from pathlib import Path
 import requests
 from dotenv import load_dotenv
 
-load_dotenv("../.env.local")
+load_dotenv(".env.local")
 
 BASE_URL = "https://api.clashroyale.com/v1"
 TOKEN = os.environ["CLASH_ROYALE_API_TOKEN"]
 HEADERS = {"Authorization": f"Bearer {TOKEN}"}
 
-RAW_DIR = Path("../raw_data")
+RAW_DIR = Path("data/raw")
 RAW_DIR.mkdir(exist_ok=True)
 
-BATTLES_FILE = RAW_DIR / "battles.json1"
+BATTLES_FILE = RAW_DIR / "battles.jsonl"
 STATE_FILE = RAW_DIR / "collector_state.json"
 
 # --- trophy range to keep data consistent ---
-TROPHY_MIN = 6000
-TROPHY_MAX = 10000
+TROPHY_MIN = 4000
+TROPHY_MAX = 12000
 
 # --- rate limiting: stay under 10 req/s ---
 REQUEST_DELAY = 0.15  # seconds between requests
@@ -137,7 +137,9 @@ def collect(
     state_save_interval: int = 50,
 ) -> None:
     seen_players, seen_battles, queue = load_state()
-    total_written = sum(1 for _ in BATTLES_FILE.open() if BATTLES_FILE.exists())
+    if not BATTLES_FILE.exists():
+        BATTLES_FILE.touch()
+    total_written = sum(1 for _ in BATTLES_FILE.open())
 
     # Seed the queue on first run
     if not seen_players and not queue:

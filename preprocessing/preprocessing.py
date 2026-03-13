@@ -5,12 +5,12 @@ import os
 import pandas as pd
 from pathlib import Path
 from dotenv import load_dotenv
-from util.card_api import fetch_cards
+from utils.card_api import fetch_cards
 
 load_dotenv(".env.local")
 
-RAW_PATH = Path("raw_data/battles.json1")
-OUT_PATH = Path("processed/battles_cards.csv")
+RAW_PATH = Path("data/raw/battles.jsonl")
+OUT_PATH = Path("data/processed/battles_cards.csv")
 OUT_PATH.parent.mkdir(exist_ok=True)
 
 def load_card_list():

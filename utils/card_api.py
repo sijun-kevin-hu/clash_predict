@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 
 BASE_URL = "https://api.clashroyale.com/v1"
-CARD_CACHE = Path("processed/card_list.json")
+CARD_CACHE = Path("data/processed/card_list.json")
 
 def fetch_cards(api_token: str) -> list[str]:
     """
@@ -33,6 +33,7 @@ def fetch_cards(api_token: str) -> list[str]:
     card_names.sort()  # for stable ordering
 
     # cache the result
+    CARD_CACHE.parent.mkdir(parents=True, exist_ok=True)
     with open(CARD_CACHE, "w", encoding="utf-8") as f:
         json.dump(card_names, f, indent=2)
 

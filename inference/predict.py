@@ -5,19 +5,19 @@ import pandas as pd
 from pathlib import Path
 
 MODEL_PATH = Path("models/clash_model.joblib")
-CARD_CACHE = Path("processed/card_list.json")
+CARD_CACHE = Path("data/processed/card_list.json")
 
 
 def load_model():
     if not MODEL_PATH.exists():
-        raise FileNotFoundError(f"Model not found at {MODEL_PATH}. Run train.py first.")
+        raise FileNotFoundError(f"Model not found at {MODEL_PATH}. Run models/train.py first.")
     return joblib.load(MODEL_PATH)
 
 
 def load_card_list():
     if not CARD_CACHE.exists():
         raise FileNotFoundError(
-            f"Card list not found at {CARD_CACHE}. Run preprocessing.py first."
+            f"Card list not found at {CARD_CACHE}. Run preprocessing/preprocessing.py first."
         )
     with open(CARD_CACHE, "r", encoding="utf-8") as f:
         return json.load(f)
@@ -25,7 +25,7 @@ def load_card_list():
 
 def build_features(team_trophies, opp_trophies, team_cards, opp_cards, card_list):
     """
-    Build the same feature vector as preprocess_battle() in preprocessing.py.
+    Build the same feature vector as preprocess_battle() in preprocessing/preprocessing.py.
 
     Args:
         team_trophies / opp_trophies: int
@@ -43,13 +43,13 @@ def build_features(team_trophies, opp_trophies, team_cards, opp_cards, card_list
         "opp_avg_elixir":  sum(c.get("elixirCost", 0) for c in opp_cards)  / len(opp_cards),
     }
 
-    # One-hot card presence (mirrors create_one_hot in preprocessing.py)
+    # One-hot card presence (mirrors create_one_hot in preprocessing/preprocessing.py)
     for card in card_list:
         key = card.replace(" ", "_")
         row[f"team_has_{key}"] = 1 if card in team_card_names else 0
         row[f"opp_has_{key}"]  = 1 if card in opp_card_names  else 0
 
-    # Interaction features (mirrors preprocessing.py loop)
+    # Interaction features (mirrors preprocessing/preprocessing.py loop)
     for card in card_list:
         key = card.replace(" ", "_")
         row[f"{key}_diff"] = row[f"team_has_{key}"] - row[f"opp_has_{key}"]
