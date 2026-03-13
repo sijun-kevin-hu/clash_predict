@@ -2,7 +2,7 @@
 .env
 __pycache__/
 *.pyc
-models/
 processed/
 raw_data/
 clash_predict.egg-info
+*.joblib

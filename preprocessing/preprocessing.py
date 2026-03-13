@@ -15,6 +15,9 @@ CARD_LIST_PATH = Path("data/processed/card_list.json")
 CARD_LIST_PATH.parent.mkdir(exist_ok=True)
 OUT_PATH.parent.mkdir(exist_ok=True)
 
+MIN_TROPHY = 6000
+MAX_TROPHY = 12000
+
 def load_card_list():
     return fetch_cards(os.environ["CLASH_ROYALE_API_TOKEN"])
 
@@ -40,6 +43,7 @@ def create_support_card_feature(deck_cards, support_list, prefix):
         row[key] = support_norm_level_map[support] if support in support_norm_level_map else 0
     return row
 
+
 def preprocess_battle(record, card_list, support_list):
     battle = record["battle"]
 
@@ -61,6 +65,12 @@ def preprocess_battle(record, card_list, support_list):
 
     team_cards = team.get("cards", [])
     opp_cards = opp.get("cards", [])
+    
+    # Trophy Range Limit
+    team_trophies = team.get("startingTrophies", 0)
+    if team_trophies < MIN_TROPHY or team_trophies > MAX_TROPHY:
+        return None
+    
 
     # Basic numeric features
     row = {

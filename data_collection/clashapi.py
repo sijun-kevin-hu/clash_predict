@@ -33,7 +33,7 @@ BATTLES_FILE = RAW_DIR / "battles.jsonl"
 STATE_FILE = RAW_DIR / "collector_state.json"
 
 # --- trophy range to keep data consistent ---
-TROPHY_MIN = 4000
+TROPHY_MIN = 6000
 TROPHY_MAX = 12000
 
 # --- rate limiting: stay under 10 req/s ---
@@ -233,5 +233,5 @@ if __name__ == "__main__":
     collect(
         seed_clans=SEED_CLANS,
         seed_players=SEED_PLAYERS,
-        target_battles=15_000,
+        target_battles=50_000,
     )
