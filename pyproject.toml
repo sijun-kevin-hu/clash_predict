@@ -1,0 +1,6 @@
+[project]
+name = "clash_predict"
+version = "0.1.0"
+
+[tool.setuptools.packages.find]
+where = ["."]

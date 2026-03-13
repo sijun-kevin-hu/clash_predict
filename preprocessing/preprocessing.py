@@ -5,7 +5,7 @@ import os
 import pandas as pd
 from pathlib import Path
 from dotenv import load_dotenv
-from utils.card_api import fetch_cards
+from utils.fetch_cards import fetch_cards, fetch_support_cards
 
 load_dotenv(".env.local")
 
@@ -18,24 +18,42 @@ OUT_PATH.parent.mkdir(exist_ok=True)
 def load_card_list():
     return fetch_cards(os.environ["CLASH_ROYALE_API_TOKEN"])
 
-def create_one_hot(deck_cards, card_list, prefix):
+def load_support_list():
+    return fetch_support_cards(os.environ["CLASH_ROYALE_API_TOKEN"])
+
+def create_card_feature(deck_cards, card_list, prefix):
     """
     Create one-hot presence flags for a deck.
     """
     row = {}
-    card_names = [c.get("name") for c in deck_cards]
+    card_norm_level_map = {c.get("name"): c.get("level", 0) / c.get("maxLevel", 1) for c in deck_cards}
     for card in card_list:
-        key = f"{prefix}_has_{card.replace(' ', '_')}"
-        row[key] = 1 if card in card_names else 0
+        key = f"{prefix}_norm_level_{card.replace(' ', '_')}"
+        row[key] = card_norm_level_map[card] if card in card_norm_level_map else 0
     return row
 
-def preprocess_battle(record, card_list):
+def create_support_card_feature(deck_cards, support_list, prefix):
+    row = {}
+    support_norm_level_map = {c.get("name"): c.get("level", 0) / c.get("maxLevel", 1) for c in deck_cards}
+    for support in support_list:
+        key = f"{prefix}_support_norm_level_{support.replace(' ', '_')}"
+        row[key] = support_norm_level_map[support] if support in support_norm_level_map else 0
+    return row
+
+def preprocess_battle(record, card_list, support_list):
     battle = record["battle"]
 
     # You can include your existing filtering (e.g., 1v1 ladder)
     team_list = battle.get("team", [])
     opp_list = battle.get("opponent", [])
     if len(team_list) != 1 or len(opp_list) != 1:
+        return None
+    
+    if battle.get("type") != "PvP":
+        return None
+
+    game_mode = battle.get("gameMode", {}).get("name", "")
+    if game_mode != "Ladder":
         return None
 
     team = team_list[0]
@@ -53,10 +71,16 @@ def preprocess_battle(record, card_list):
         "opp_avg_elixir": sum(c.get("elixirCost", 0) for c in opp_cards) / len(opp_cards) if opp_cards else 0,
     }
 
-    # One-hot card features
-    row.update(create_one_hot(team_cards, card_list, "team"))
-    row.update(create_one_hot(opp_cards, card_list, "opp"))
+    # Level-based card features
+    row.update(create_card_feature(team_cards, card_list, "team"))
+    row.update(create_card_feature(opp_cards, card_list, "opp"))
 
+    # Support tower features
+    team_support = team.get("supportCards", [])
+    opp_support = opp.get("supportCards", [])
+    row.update(create_support_card_feature(team_support, support_list, "team"))
+    row.update(create_support_card_feature(opp_support, support_list, "opp"))
+    
     # Optional interaction features
     # for card in card_list:
     #     team_key = f"team_has_{card.replace(' ', '_')}"
@@ -75,10 +99,8 @@ def main():
     card_list = load_card_list()
     card_list = sorted(card_list)
     
-    with CARD_LIST_PATH.open('w', encoding="utf-8") as f:
-        json.dump(card_list, f, indent=4)
-        
-    print("Loaded", len(card_list), "cards.")
+    support_list = load_support_list()
+    support_list = sorted(support_list)
 
     rows = []
     with RAW_PATH.open("r", encoding="utf-8") as f:
@@ -86,7 +108,7 @@ def main():
             if not line.strip():
                 continue
             record = json.loads(line)
-            row = preprocess_battle(record, card_list)
+            row = preprocess_battle(record, card_list, support_list=support_list)
             if row:
                 rows.append(row)
 

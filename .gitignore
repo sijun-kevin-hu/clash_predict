@@ -5,3 +5,4 @@ __pycache__/
 models/
 processed/
 raw_data/
+clash_predict.egg-info
