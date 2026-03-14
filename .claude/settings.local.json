@@ -15,7 +15,9 @@
       "Bash(python3 preprocessing.py)",
       "Bash(ls /Users/kevinhu/Programming/clash_predict/.venv/bin/python*)",
       "Bash(.venv/bin/python preprocessing.py)",
-      "Bash(pip3 install pandas matplotlib seaborn)"
+      "Bash(pip3 install pandas matplotlib seaborn)",
+      "Bash(python3 -m json.tool)",
+      "Bash(python3:*)"
     ]
   }
 }

@@ -6,3 +6,4 @@ processed/
 raw_data/
 clash_predict.egg-info
 *.joblib
+.raw
