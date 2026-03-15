@@ -33,8 +33,8 @@ BATTLES_FILE = RAW_DIR / "battles.jsonl"
 STATE_FILE = RAW_DIR / "collector_state.json"
 
 # --- trophy range to keep data consistent ---
-TROPHY_MIN = 6000
-TROPHY_MAX = 12000
+TROPHY_MIN = 3000
+TROPHY_MAX = 9000
 
 # --- rate limiting: stay under 10 req/s ---
 REQUEST_DELAY = 0.15  # seconds between requests
@@ -74,17 +74,16 @@ def get_clan_members(clan_tag: str) -> list[str]:
 
 def load_state() -> tuple[set, set, deque]:
     """Load seen_players, seen_battles, and the player queue from disk."""
-    if STATE_FILE.exists():
-        raw = json.loads(STATE_FILE.read_text())
-        seen_players = set(raw.get("seen_players", []))
-        seen_battles = set(raw.get("seen_battles", []))
-        queue = deque(raw.get("queue", []))
-        print(f"[resume] {len(seen_players)} players seen, "
-              f"{len(seen_battles)} battles seen, {len(queue)} in queue")
-    else:
-        seen_players: set = set()
-        seen_battles: set = set()
-        queue: deque = deque()
+    if not STATE_FILE.exists():
+        STATE_FILE.write_text(json.dumps({}))
+        return set(), set(), deque()
+
+    raw = json.loads(STATE_FILE.read_text())
+    seen_players = set(raw.get("seen_players", []))
+    seen_battles = set(raw.get("seen_battles", []))
+    queue = deque(raw.get("queue", []))
+    print(f"[resume] {len(seen_players)} players seen, "
+          f"{len(seen_battles)} battles seen, {len(queue)} in queue")
     return seen_players, seen_battles, queue
 
 

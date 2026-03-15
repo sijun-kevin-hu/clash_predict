@@ -10,14 +10,21 @@ SUPPORT_CACHE = Path("data/processed/support_list.json")
 
 def fetch_cards(api_token: str) -> list[str]:
     """
-    Fetch the latest card list from the Clash Royale API.
-    Caches locally so you don't need to download every time.
+    Fetch the latest card list from the Clash Royale API and merge into
+    the existing card_list.json, preserving manually assigned roles.
+    New cards from the API are added with an empty role list.
     """
 
-    # If cached file exists, load and return it
+    # Load existing role mappings if present
+    existing = {}
     if CARD_CACHE.exists():
         with open(CARD_CACHE, "r", encoding="utf-8") as f:
-            return json.load(f)
+            data = json.load(f)
+            if isinstance(data, dict):
+                existing = data
+            else:
+                # Legacy plain-list format: convert to dict with empty roles
+                existing = {name: [] for name in data}
 
     url = BASE_URL
     headers = {
@@ -28,17 +35,24 @@ def fetch_cards(api_token: str) -> list[str]:
     resp.raise_for_status()
     data = resp.json()
 
-    # Extract card names from "items"
+    # Merge new cards into existing mappings
     items = data.get("items", [])
-    card_names = [card["name"] for card in items if "name" in card]
-    card_names.sort()  # for stable ordering
+    new_cards = []
+    for card in items:
+        name = card.get("name")
+        if name and name not in existing:
+            existing[name] = []
+            new_cards.append(name)
 
-    # cache the result
+    if new_cards:
+        print(f"New cards added (assign roles in {CARD_CACHE}): {new_cards}")
+
+    # Write back sorted dict preserving roles
     CARD_CACHE.parent.mkdir(parents=True, exist_ok=True)
     with open(CARD_CACHE, "w", encoding="utf-8") as f:
-        json.dump(card_names, f, indent=2)
+        json.dump(dict(sorted(existing.items())), f, indent=4)
 
-    return card_names
+    return sorted(existing.keys())
 
 def fetch_support_cards(api_token: str) -> list[str]:
     """

@@ -11,18 +11,47 @@ load_dotenv(".env.local")
 
 RAW_PATH = Path("data/raw/battles.jsonl")
 OUT_PATH = Path("data/processed/battles_cards.csv")
-CARD_LIST_PATH = Path("data/processed/card_list.json")
-CARD_LIST_PATH.parent.mkdir(exist_ok=True)
+CARD_CACHE = Path("data/processed/card_list.json")
 OUT_PATH.parent.mkdir(exist_ok=True)
 
-MIN_TROPHY = 6000
-MAX_TROPHY = 12000
+# Adjust MIN MAX trophy range
+MIN_TROPHY = 3000
+MAX_TROPHY = 9000
+
+ROLE_CATEGORIES = [
+    "win condition", "spell", "air", "mini-tank",
+    "building", "swarm", "cycle", "support",
+]
 
 def load_card_list():
     return fetch_cards(os.environ["CLASH_ROYALE_API_TOKEN"])
 
 def load_support_list():
     return fetch_support_cards(os.environ["CLASH_ROYALE_API_TOKEN"])
+
+def load_card_roles():
+    """Load the card name -> roles mapping from card_list.json."""
+    if CARD_CACHE.exists():
+        with open(CARD_CACHE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return {}
+
+def create_deck_balance_features(deck_cards, card_roles, prefix):
+    """
+    Count how many cards in the deck belong to each role category.
+    Cards with multiple roles count toward each.
+    """
+    role_counts = {role: 0 for role in ROLE_CATEGORIES}
+    for card in deck_cards:
+        name = card.get("name")
+        for role in card_roles.get(name, []):
+            if role in role_counts:
+                role_counts[role] += 1
+
+    return {
+        f"{prefix}_{role.replace(' ', '_')}_count": count
+        for role, count in role_counts.items()
+    }
 
 def create_card_feature(deck_cards, card_list, prefix):
     """
@@ -44,7 +73,7 @@ def create_support_card_feature(deck_cards, support_list, prefix):
     return row
 
 
-def preprocess_battle(record, card_list, support_list):
+def preprocess_battle(record, card_list, support_list, card_roles):
     battle = record["battle"]
 
     # You can include your existing filtering (e.g., 1v1 ladder)
@@ -53,9 +82,11 @@ def preprocess_battle(record, card_list, support_list):
     if len(team_list) != 1 or len(opp_list) != 1:
         return None
     
+    # PvP Only
     if battle.get("type") != "PvP":
         return None
 
+    # Trophy Road Only
     game_mode = battle.get("gameMode", {}).get("name", "")
     if game_mode != "Ladder":
         return None
@@ -73,10 +104,12 @@ def preprocess_battle(record, card_list, support_list):
     
 
     # Basic numeric features
+    team_trophies = team.get("startingTrophies") or 0
+    opp_trophies = opp.get("startingTrophies") or 0
     row = {
-        "team_trophies": team.get("startingTrophies"),
-        "opp_trophies": opp.get("startingTrophies"),
-        "trophy_diff": (team.get("startingTrophies") or 0) - (opp.get("startingTrophies") or 0),
+        "team_trophies": team_trophies,
+        "opp_trophies": opp_trophies,
+        "trophy_diff": team_trophies - opp_trophies,
         "team_avg_elixir": sum(c.get("elixirCost", 0) for c in team_cards) / len(team_cards) if team_cards else 0,
         "opp_avg_elixir": sum(c.get("elixirCost", 0) for c in opp_cards) / len(opp_cards) if opp_cards else 0,
     }
@@ -90,6 +123,10 @@ def preprocess_battle(record, card_list, support_list):
     opp_support = opp.get("supportCards", [])
     row.update(create_support_card_feature(team_support, support_list, "team"))
     row.update(create_support_card_feature(opp_support, support_list, "opp"))
+
+    # Deck balance features
+    row.update(create_deck_balance_features(team_cards, card_roles, "team"))
+    row.update(create_deck_balance_features(opp_cards, card_roles, "opp"))
     
     # Optional interaction features
     # for card in card_list:
@@ -108,9 +145,11 @@ def preprocess_battle(record, card_list, support_list):
 def main():
     card_list = load_card_list()
     card_list = sorted(card_list)
-    
+
     support_list = load_support_list()
     support_list = sorted(support_list)
+
+    card_roles = load_card_roles()
 
     rows = []
     with RAW_PATH.open("r", encoding="utf-8") as f:
@@ -118,7 +157,7 @@ def main():
             if not line.strip():
                 continue
             record = json.loads(line)
-            row = preprocess_battle(record, card_list, support_list=support_list)
+            row = preprocess_battle(record, card_list, support_list=support_list, card_roles=card_roles)
             if row:
                 rows.append(row)
 

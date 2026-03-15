@@ -29,6 +29,49 @@ def load_data():
 
     return X, y
 
+def add_card_winrate_features(X_train, X_test, y_train):
+    """
+    For each card, compute how often it appears in winning decks
+    (from training data only to avoid leakage).
+    Then average across all 8 cards in each deck.
+    """
+    # Get team and opponent card columns
+    team_card_cols = [c for c in X_train.columns if c.startswith("team_norm_level_")]
+    opp_card_cols = [c for c in X_train.columns if c.startswith("opp_norm_level_")]
+
+    # Compute win rate for each card using training data only
+    card_win_rates = {}
+    for col in team_card_cols:
+        present = X_train[col] > 0           # rows where this card is in the deck
+        if present.sum() >= 30:               # enough data to be reliable
+            wins = y_train[present].sum()     # how many of those were wins
+            card_win_rates[col] = wins / present.sum()
+        else:
+            card_win_rates[col] = 0.5         # not enough data, assume neutral
+
+    # For each row: average win rate of all cards present in the deck
+    for df in [X_train, X_test]:
+        # Team average
+        team_wr = pd.DataFrame()
+        for col in team_card_cols:
+            # If card is present, use its win rate; otherwise 0 (won't count in average)
+            team_wr[col] = (df[col] > 0).astype(float) * card_win_rates.get(col, 0.5)
+
+        # Count how many cards are in the deck per row (should be 8)
+        team_count = (df[team_card_cols] > 0).sum(axis=1).clip(lower=1)
+        df["team_card_winrate_avg"] = team_wr.sum(axis=1) / team_count
+
+        # Opponent average — map opp columns to team win rates
+        opp_wr = pd.DataFrame()
+        for opp_col in opp_card_cols:
+            team_col = opp_col.replace("opp_norm_level_", "team_norm_level_")
+            opp_wr[opp_col] = (df[opp_col] > 0).astype(float) * card_win_rates.get(team_col, 0.5)
+
+        opp_count = (df[opp_card_cols] > 0).sum(axis=1).clip(lower=1)
+        df["opp_card_winrate_avg"] = opp_wr.sum(axis=1) / opp_count
+
+    return X_train, X_test
+
 def make_objective(X_train, y_train):
     def objective(trial):
         # Optuna suggests hyperparameter values
@@ -84,6 +127,9 @@ def main():
         stratify=y if len(y.unique()) > 1 else None,
     )
     
+    # Add card win rate features (computed from training data only)
+    X_train, X_test = add_card_winrate_features(X_train, X_test, y_train)
+    
     # Run the Optuna study
     study = optuna.create_study(direction="maximize")
     study.optimize(make_objective(X_train, y_train), n_trials=50)
@@ -99,7 +145,7 @@ def main():
     print(f"\nSaved XGBoost model to {MODEL_PATH}")
 
     # Example prediction
-    sample = X.iloc[[0]]
+    sample = X_test.iloc[[0]]
     proba = clf.predict_proba(sample)[0]
     print("\nExample prediction for first row:")
     print("P(loss) =", proba[0], "P(win) =", proba[1])

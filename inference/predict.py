@@ -21,7 +21,11 @@ def load_card_list():
             f"Card list not found at {CARD_CACHE}. Run preprocessing/preprocessing.py first."
         )
     with open(CARD_CACHE, "r", encoding="utf-8") as f:
-        return json.load(f)
+        data = json.load(f)
+        # card_list.json maps card names to types; extract just the names
+        if isinstance(data, dict):
+            return sorted(data.keys())
+        return data
 
 def load_support_list():
     if not SUPPORT_CACHE.exists():
