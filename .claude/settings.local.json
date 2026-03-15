@@ -1,7 +1,6 @@
 {
   "permissions": {
     "allow": [
-      "Bash(printf 'CLASH_ROYALE_API_TOKEN=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzUxMiIsImtpZCI6IjI4YTMxOGY3LTAwMDAtYTFlYi03ZmExLTJjNzQzM2M2Y2NhNSJ9.eyJpc3MiOiJzdXBlcmNlbGwiLCJhdWQiOiJzdXBlcmNlbGw6Z2FtZWFwaSIsImp0aSI6Ijk3ZDg5MTg0LTlhNmYtNDFhNC1hNzFlLWM1ZjVlNGQ0ZmY3NyIsImlhdCI6MTc2NTQ3NjE1Niwic3ViIjoiZGV2ZWxvcGVyL2MwN2RiMjg5LTdmNDYtNjJjNy0yZjE0LTgwMTY2ZWZjNTMzZiIsInNjb3BlcyI6WyJyb3lhbGUiXSwibGltaXRzIjpbeyJ0aWVyIjoiZGV2ZWxvcGVyL3NpbHZlciIsInR5cGUiOiJ0aHJvdHRsaW5nIn0seyJjaWRycyI6WyIxMzYuNTUuMjM4LjEwIl0sInR5cGUiOiJjbGllbnQifV19.ZnJhxksBROOWsd3is0x1IaL02vOrwsUg8pxIYjHr6wpTzdQCZ_tWFKPN0rXrj0FiatRvqvPiNlqp8fwPUYkEwQ\\\\n')",
       "Bash(python3 -c \":*)",
       "Bash(uv run python -c \":*)",
       "Read(//usr/local/bin/**)",

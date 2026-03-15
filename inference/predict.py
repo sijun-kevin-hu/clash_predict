@@ -4,8 +4,9 @@ import joblib
 import pandas as pd
 from pathlib import Path
 
-MODEL_PATH = Path("models/clash_model.joblib")
+MODEL_PATH = Path("models/xgb_clash_model.joblib")
 CARD_CACHE = Path("data/processed/card_list.json")
+SUPPORT_CACHE = Path("data/processed/support_list.json")
 
 
 def load_model():
@@ -22,57 +23,86 @@ def load_card_list():
     with open(CARD_CACHE, "r", encoding="utf-8") as f:
         return json.load(f)
 
+def load_support_list():
+    if not SUPPORT_CACHE.exists():
+        raise FileNotFoundError(
+            f"Support list not found at {SUPPORT_CACHE}. Run preprocessing/preprocessing.py first."
+        )
+    with open(SUPPORT_CACHE, 'r', encoding='utf-8') as f:
+        return json.load(f)
 
-def build_features(team_trophies, opp_trophies, team_cards, opp_cards, card_list):
+
+def create_card_feature(deck_cards, card_list, prefix):
+    """Mirrors create_card_feature() in preprocessing/preprocessing.py."""
+    row = {}
+    card_norm_level_map = {c.get("name"): c.get("level", 0) / c.get("maxLevel", 1) for c in deck_cards}
+    for card in card_list:
+        key = f"{prefix}_norm_level_{card.replace(' ', '_')}"
+        row[key] = card_norm_level_map[card] if card in card_norm_level_map else 0
+    return row
+
+
+def create_support_card_feature(support_cards, support_list, prefix):
+    """Mirrors create_support_card_feature() in preprocessing/preprocessing.py."""
+    row = {}
+    support_norm_level_map = {c.get("name"): c.get("level", 0) / c.get("maxLevel", 1) for c in support_cards}
+    for support in support_list:
+        key = f"{prefix}_support_norm_level_{support.replace(' ', '_')}"
+        row[key] = support_norm_level_map[support] if support in support_norm_level_map else 0
+    return row
+
+
+def build_features(team_trophies, opp_trophies, team_cards, opp_cards, team_support, opp_support, card_list, support_list):
     """
     Build the same feature vector as preprocess_battle() in preprocessing/preprocessing.py.
 
     Args:
         team_trophies / opp_trophies: int
-        team_cards / opp_cards: list of dicts with "name" and "elixirCost"
-        card_list: list of card name strings (from card cache)
+        team_cards / opp_cards: list of dicts with "name", "elixirCost", "level", "maxLevel"
+        team_support / opp_support: list of dicts with "name", "level", "maxLevel"
+        card_list: sorted list of card name strings
+        support_list: sorted list of support card name strings
     """
-    team_card_names = [c["name"] for c in team_cards]
-    opp_card_names  = [c["name"] for c in opp_cards]
-
     row = {
         "team_trophies":   team_trophies,
         "opp_trophies":    opp_trophies,
         "trophy_diff":     team_trophies - opp_trophies,
-        "team_avg_elixir": sum(c.get("elixirCost", 0) for c in team_cards) / len(team_cards),
-        "opp_avg_elixir":  sum(c.get("elixirCost", 0) for c in opp_cards)  / len(opp_cards),
+        "team_avg_elixir": sum(c.get("elixirCost", 0) for c in team_cards) / len(team_cards) if team_cards else 0,
+        "opp_avg_elixir":  sum(c.get("elixirCost", 0) for c in opp_cards) / len(opp_cards) if opp_cards else 0,
     }
 
-    # One-hot card presence (mirrors create_one_hot in preprocessing/preprocessing.py)
-    for card in card_list:
-        key = card.replace(" ", "_")
-        row[f"team_has_{key}"] = 1 if card in team_card_names else 0
-        row[f"opp_has_{key}"]  = 1 if card in opp_card_names  else 0
-
-    # Interaction features (mirrors preprocessing/preprocessing.py loop)
-    for card in card_list:
-        key = card.replace(" ", "_")
-        row[f"{key}_diff"] = row[f"team_has_{key}"] - row[f"opp_has_{key}"]
-        row[f"{key}_both"] = row[f"team_has_{key}"] * row[f"opp_has_{key}"]
+    row.update(create_card_feature(team_cards, card_list, "team"))
+    row.update(create_card_feature(opp_cards, card_list, "opp"))
+    row.update(create_support_card_feature(team_support, support_list, "team"))
+    row.update(create_support_card_feature(opp_support, support_list, "opp"))
 
     return row
 
 
-def predict_win_prob(team_trophies, opp_trophies, team_cards, opp_cards):
+def predict_win_prob(team_trophies, opp_trophies, team_cards, opp_cards, team_support=None, opp_support=None):
     """
     Predict win probability for a matchup.
 
     Args:
         team_trophies: int — team's starting trophies
         opp_trophies:  int — opponent's starting trophies
-        team_cards:    list of dicts with keys "name" and "elixirCost"
-        opp_cards:     list of dicts with keys "name" and "elixirCost"
+        team_cards:    list of dicts with keys "name", "elixirCost", "level", "maxLevel"
+        opp_cards:     list of dicts with keys "name", "elixirCost", "level", "maxLevel"
+        team_support:  list of dicts with keys "name", "level", "maxLevel" (optional)
+        opp_support:   list of dicts with keys "name", "level", "maxLevel" (optional)
 
     Returns:
         (P(loss), P(win)) tuple of floats
     """
     card_list = load_card_list()
-    features  = build_features(team_trophies, opp_trophies, team_cards, opp_cards, card_list)
+    support_list = load_support_list()
+
+    features = build_features(
+        team_trophies, opp_trophies,
+        team_cards, opp_cards,
+        team_support or [], opp_support or [],
+        card_list, support_list,
+    )
 
     df = pd.DataFrame([features])
 
@@ -87,24 +117,24 @@ def predict_win_prob(team_trophies, opp_trophies, team_cards, opp_cards):
 if __name__ == "__main__":
     # Example: Hog Rider cycle deck vs. Golem beatdown
     team_cards = [
-        {"name": "Hog Rider",       "elixirCost": 4},
-        {"name": "Musketeer",       "elixirCost": 4},
-        {"name": "Valkyrie",        "elixirCost": 4},
-        {"name": "Skeletons",       "elixirCost": 1},
-        {"name": "Ice Spirit",      "elixirCost": 1},
-        {"name": "The Log",         "elixirCost": 2},
-        {"name": "Fireball",        "elixirCost": 4},
-        {"name": "Cannon",          "elixirCost": 3},
+        {"name": "Hog Rider",        "elixirCost": 4, "level": 11, "maxLevel": 11},
+        {"name": "Musketeer",        "elixirCost": 4, "level": 11, "maxLevel": 11},
+        {"name": "Valkyrie",         "elixirCost": 4, "level": 11, "maxLevel": 11},
+        {"name": "Skeletons",        "elixirCost": 1, "level": 11, "maxLevel": 11},
+        {"name": "Ice Spirit",       "elixirCost": 1, "level": 11, "maxLevel": 11},
+        {"name": "The Log",          "elixirCost": 2, "level": 11, "maxLevel": 11},
+        {"name": "Fireball",         "elixirCost": 4, "level": 11, "maxLevel": 11},
+        {"name": "Cannon",           "elixirCost": 3, "level": 11, "maxLevel": 11},
     ]
     opp_cards = [
-        {"name": "Golem",           "elixirCost": 8},
-        {"name": "Baby Dragon",     "elixirCost": 4},
-        {"name": "Mega Minion",     "elixirCost": 3},
-        {"name": "Dark Prince",     "elixirCost": 4},
-        {"name": "Mega Knight",     "elixirCost": 7},
-        {"name": "Lightning",       "elixirCost": 6},
-        {"name": "Zap",             "elixirCost": 2},
-        {"name": "Elixir Collector","elixirCost": 6},
+        {"name": "Golem",            "elixirCost": 8, "level": 11, "maxLevel": 11},
+        {"name": "Baby Dragon",      "elixirCost": 4, "level": 11, "maxLevel": 11},
+        {"name": "Mega Minion",      "elixirCost": 3, "level": 11, "maxLevel": 11},
+        {"name": "Dark Prince",      "elixirCost": 4, "level": 11, "maxLevel": 11},
+        {"name": "Mega Knight",      "elixirCost": 7, "level": 11, "maxLevel": 11},
+        {"name": "Lightning",        "elixirCost": 6, "level": 11, "maxLevel": 11},
+        {"name": "Zap",              "elixirCost": 2, "level": 11, "maxLevel": 11},
+        {"name": "Elixir Collector", "elixirCost": 6, "level": 11, "maxLevel": 11},
     ]
 
     pl, pw = predict_win_prob(
