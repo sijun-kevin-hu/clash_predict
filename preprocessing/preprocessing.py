@@ -142,6 +142,42 @@ def preprocess_battle(record, card_list, support_list, card_roles):
 
     return row
 
+def preprocess_matchup(team_player, opp_player, card_list, support_list, card_roles):
+    """
+    Build a single-row DataFrame for a live matchup prediction.
+    Accepts two player API responses (from /players endpoint).
+    """
+    team_cards = team_player.get("currentDeck", [])
+    opp_cards = opp_player.get("currentDeck", [])
+
+    team_trophies = team_player.get("trophies", 0)
+    opp_trophies = opp_player.get("trophies", 0)
+
+    row = {
+        "team_trophies": team_trophies,
+        "opp_trophies": opp_trophies,
+        "trophy_diff": team_trophies - opp_trophies,
+        "team_avg_elixir": sum(c.get("elixirCost", 0) for c in team_cards) / len(team_cards) if team_cards else 0,
+        "opp_avg_elixir": sum(c.get("elixirCost", 0) for c in opp_cards) / len(opp_cards) if opp_cards else 0,
+    }
+
+    # Level-based card features
+    row.update(create_card_feature(team_cards, card_list, "team"))
+    row.update(create_card_feature(opp_cards, card_list, "opp"))
+
+    # Support tower features
+    team_support = team_player.get("currentDeckSupportCards", [])
+    opp_support = opp_player.get("currentDeckSupportCards", [])
+    row.update(create_support_card_feature(team_support, support_list, "team"))
+    row.update(create_support_card_feature(opp_support, support_list, "opp"))
+
+    # Deck balance features
+    row.update(create_deck_balance_features(team_cards, card_roles, "team"))
+    row.update(create_deck_balance_features(opp_cards, card_roles, "opp"))
+
+    return pd.DataFrame([row])
+
+
 def main():
     card_list = load_card_list()
     card_list = sorted(card_list)

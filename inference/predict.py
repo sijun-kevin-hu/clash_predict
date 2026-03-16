@@ -118,6 +118,36 @@ def predict_win_prob(team_trophies, opp_trophies, team_cards, opp_cards, team_su
     return proba[0], proba[1]  # (P(loss), P(win))
 
 
+def predict_matchup(team_player, opp_player):
+    """
+    Predict win probability from two raw Clash Royale player API responses.
+
+    Uses preprocess_matchup from preprocessing to build features, then runs
+    the trained model.
+
+    Args:
+        team_player: dict — full player API response (must have currentDeck,
+                     currentDeckSupportCards, trophies)
+        opp_player:  dict — same structure for opponent
+
+    Returns:
+        (P(loss), P(win)) tuple of floats
+    """
+    from preprocessing.preprocessing import preprocess_matchup, load_card_roles
+
+    card_list = load_card_list()
+    support_list = load_support_list()
+    card_roles = load_card_roles()
+
+    df = preprocess_matchup(team_player, opp_player, card_list, support_list, card_roles)
+
+    model = load_model()
+    df = df.reindex(columns=model.feature_names_in_, fill_value=0)
+
+    proba = model.predict_proba(df)[0]
+    return proba[0], proba[1]  # (P(loss), P(win))
+
+
 if __name__ == "__main__":
     # Example: Hog Rider cycle deck vs. Golem beatdown
     team_cards = [
