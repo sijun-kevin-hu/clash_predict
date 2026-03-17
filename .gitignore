@@ -1,5 +1,6 @@
 .env.local
 .env
+.streamlit/secrets.toml
 __pycache__/
 *.pyc
 processed/

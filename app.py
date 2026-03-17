@@ -24,11 +24,24 @@ BASE_URL = "https://api.clashroyale.com/v1"
 # API helper
 # ---------------------------------------------------------------------------
 
+def _get_api_token() -> str:
+    """Return the Clash Royale API token from st.secrets or environment."""
+    try:
+        return st.secrets["CLASH_ROYALE_API_TOKEN"]
+    except (KeyError, FileNotFoundError):
+        pass
+    return os.environ.get("CLASH_ROYALE_API_TOKEN", "")
+
+
 def fetch_player(player_tag: str) -> dict:
     """Fetch a player profile from the Clash Royale API."""
-    token = os.environ.get("CLASH_ROYALE_API_TOKEN", "")
+    token = _get_api_token()
     if not token:
-        st.error("Set CLASH_ROYALE_API_TOKEN in .env.local")
+        st.error(
+            "API token not found. "
+            "Add `CLASH_ROYALE_API_TOKEN` to `.streamlit/secrets.toml` "
+            "(Streamlit Cloud) or `.env.local` (local dev)."
+        )
         st.stop()
 
     tag = player_tag.strip().lstrip("#").upper()
