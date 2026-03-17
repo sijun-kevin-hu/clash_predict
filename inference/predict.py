@@ -131,7 +131,8 @@ def predict_matchup(team_player, opp_player):
         opp_player:  dict — same structure for opponent
 
     Returns:
-        (P(loss), P(win)) tuple of floats
+        (P(loss), P(win), feature_df, model) — probabilities, aligned feature
+        DataFrame, and the loaded model (for explainability).
     """
     from preprocessing.preprocessing import preprocess_matchup, load_card_roles
 
@@ -145,7 +146,7 @@ def predict_matchup(team_player, opp_player):
     df = df.reindex(columns=model.feature_names_in_, fill_value=0)
 
     proba = model.predict_proba(df)[0]
-    return proba[0], proba[1]  # (P(loss), P(win))
+    return proba[0], proba[1], df, model  # (P(loss), P(win), features, model)
 
 
 if __name__ == "__main__":

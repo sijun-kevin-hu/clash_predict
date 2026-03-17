@@ -16,7 +16,11 @@
       "Bash(.venv/bin/python preprocessing.py)",
       "Bash(pip3 install pandas matplotlib seaborn)",
       "Bash(python3 -m json.tool)",
-      "Bash(python3:*)"
+      "Bash(python3:*)",
+      "Bash(ls -la /Users/kevinhu/Programming/clash_predict/data/processed/ /Users/kevinhu/Programming/clash_predict/models/*.joblib)",
+      "Bash(.venv/bin/pip list:*)",
+      "Bash(.venv/bin/pip install:*)",
+      "Bash(.venv/bin/python -c \":*)"
     ]
   }
 }
