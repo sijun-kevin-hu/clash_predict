@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 import requests
+import shap
 from dotenv import load_dotenv
 
 from inference.predict import predict_matchup
@@ -104,26 +105,26 @@ def _pretty_feature_name(feat: str) -> str:
 
 
 def show_top_features(feature_df: pd.DataFrame, model, n: int = 10):
-    """Show the top features driving the prediction for this matchup."""
-    row = feature_df.iloc[0]
-    importances = model.feature_importances_
+    """Show the top SHAP features driving the prediction for this matchup."""
+    explainer = shap.TreeExplainer(model)
+    shap_values = explainer.shap_values(feature_df)
+
+    # shap_values shape: (1, n_features) — get the single row
+    sv = shap_values[0]
     feat_names = model.feature_names_in_
 
-    # Weight = global importance * this matchup's feature value
-    contributions = importances * np.abs(row.values)
     contrib_df = pd.DataFrame({
         "feature": feat_names,
-        "value": row.values,
-        "importance": importances,
-        "contribution": contributions,
+        "shap_value": sv,
+        "abs_shap": np.abs(sv),
     })
-    # Only keep features that are non-zero in this matchup
-    contrib_df = contrib_df[contrib_df["value"] != 0]
-    contrib_df = contrib_df.sort_values("contribution", ascending=False).head(n)
+    # Keep top N by absolute SHAP value
+    contrib_df = contrib_df.sort_values("abs_shap", ascending=False).head(n)
     contrib_df["label"] = contrib_df["feature"].apply(_pretty_feature_name)
 
-    chart_df = contrib_df.set_index("label")["contribution"].sort_values(ascending=True)
+    chart_df = contrib_df.set_index("label")["shap_value"].sort_values(ascending=True)
     st.bar_chart(chart_df)
+    st.caption("Positive values push toward a win, negative toward a loss.")
 
 
 def show_elixir_comparison(team_data: dict, opp_data: dict):
@@ -295,8 +296,8 @@ def main():
         ])
 
         with tab1:
-            st.markdown("Features that mattered most for **this specific matchup**, "
-                        "weighted by the model's global importance and each feature's value.")
+            st.markdown("SHAP values show how each feature **actually pushed** the prediction "
+                        "toward a win or loss for this specific matchup.")
             show_top_features(feature_df, model, n=12)
 
         with tab2:
