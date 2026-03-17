@@ -1,5 +1,6 @@
 # predict.py
 import json
+import os
 import joblib
 import pandas as pd
 from pathlib import Path
@@ -7,6 +8,16 @@ from pathlib import Path
 MODEL_PATH = Path("models/xgb_clash_model.joblib")
 CARD_CACHE = Path("data/processed/card_list.json")
 SUPPORT_CACHE = Path("data/processed/support_list.json")
+
+
+def _api_token() -> str:
+    """Return the API token from st.secrets or environment, or empty string."""
+    try:
+        import streamlit as st
+        return st.secrets["CLASH_ROYALE_API_TOKEN"]
+    except Exception:
+        pass
+    return os.environ.get("CLASH_ROYALE_API_TOKEN", "")
 
 
 def load_model():
@@ -17,22 +28,30 @@ def load_model():
 
 def load_card_list():
     if not CARD_CACHE.exists():
-        raise FileNotFoundError(
-            f"Card list not found at {CARD_CACHE}. Run preprocessing/preprocessing.py first."
-        )
+        token = _api_token()
+        if not token:
+            raise FileNotFoundError(
+                f"Card list not found at {CARD_CACHE} and no API token available to fetch it."
+            )
+        from utils.fetch_cards import fetch_cards
+        return fetch_cards(token)
     with open(CARD_CACHE, "r", encoding="utf-8") as f:
         data = json.load(f)
-        # card_list.json maps card names to types; extract just the names
         if isinstance(data, dict):
             return sorted(data.keys())
         return data
 
+
 def load_support_list():
     if not SUPPORT_CACHE.exists():
-        raise FileNotFoundError(
-            f"Support list not found at {SUPPORT_CACHE}. Run preprocessing/preprocessing.py first."
-        )
-    with open(SUPPORT_CACHE, 'r', encoding='utf-8') as f:
+        token = _api_token()
+        if not token:
+            raise FileNotFoundError(
+                f"Support list not found at {SUPPORT_CACHE} and no API token available to fetch it."
+            )
+        from utils.fetch_cards import fetch_support_cards
+        return fetch_support_cards(token)
+    with open(SUPPORT_CACHE, "r", encoding="utf-8") as f:
         return json.load(f)
 
 
