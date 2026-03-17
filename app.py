@@ -208,6 +208,8 @@ def main():
     st.title("\u2694\ufe0f Clash Royale Matchup Predictor")
     st.markdown("Enter two player tags to predict who has the edge based on "
                 "current decks, card levels, and trophies.")
+    st.info("This model is intended for players with close trophy counts. "
+            "Predictions may be less accurate for matchups with large trophy differences.")
 
     col1, col2 = st.columns(2)
     with col1:

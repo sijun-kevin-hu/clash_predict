@@ -12,7 +12,6 @@ load_dotenv(".env.local")
 RAW_PATH = Path("data/raw/battles.jsonl")
 OUT_PATH = Path("data/processed/battles_cards.csv")
 CARD_CACHE = Path("data/processed/card_list.json")
-OUT_PATH.parent.mkdir(exist_ok=True)
 
 # Adjust MIN MAX trophy range
 MIN_TROPHY = 3000
@@ -179,6 +178,7 @@ def preprocess_matchup(team_player, opp_player, card_list, support_list, card_ro
 
 
 def main():
+    OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     card_list = load_card_list()
     card_list = sorted(card_list)
 
