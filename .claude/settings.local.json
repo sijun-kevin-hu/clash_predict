@@ -20,7 +20,9 @@
       "Bash(ls -la /Users/kevinhu/Programming/clash_predict/data/processed/ /Users/kevinhu/Programming/clash_predict/models/*.joblib)",
       "Bash(.venv/bin/pip list:*)",
       "Bash(.venv/bin/pip install:*)",
-      "Bash(.venv/bin/python -c \":*)"
+      "Bash(.venv/bin/python -c \":*)",
+      "Bash(python -m models.compare_models)",
+      "Bash(.venv/bin/python -m models.compare_models)"
     ]
   }
 }

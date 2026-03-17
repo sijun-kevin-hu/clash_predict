@@ -9,3 +9,4 @@ raw/
 clash_predict.egg-info
 *.joblib
 .claude
+!xgb_clash_model.joblib
