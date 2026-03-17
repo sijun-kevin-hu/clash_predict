@@ -1,13 +1,19 @@
 # predict.py
 import json
 import os
+import logging
 import joblib
 import pandas as pd
 from pathlib import Path
 
+logger = logging.getLogger(__name__)
+
 MODEL_PATH = Path("models/xgb_clash_model.joblib")
 CARD_CACHE = Path("data/processed/card_list.json")
 SUPPORT_CACHE = Path("data/processed/support_list.json")
+MEANS_CACHE = Path("data/processed/feature_means.json")
+
+EXPECTED_DECK_SIZE = 8
 
 
 def _api_token() -> str:
@@ -55,6 +61,46 @@ def load_support_list():
         return json.load(f)
 
 
+def load_feature_means() -> dict:
+    """Load per-feature training-set means for imputation."""
+    if not MEANS_CACHE.exists():
+        logger.warning(
+            "Feature means file not found at %s — falling back to 0-fill. "
+            "Run preprocessing to generate it.", MEANS_CACHE
+        )
+        return {}
+    with open(MEANS_CACHE, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def validate_deck(cards: list[dict], card_list: list[str], label: str = "deck") -> list[str]:
+    """
+    Check a deck for issues that could degrade prediction quality.
+
+    Returns a list of human-readable warning strings (empty = no issues).
+    """
+    warnings = []
+    if not cards:
+        warnings.append(f"{label}: deck is empty — prediction will be unreliable.")
+        return warnings
+
+    if len(cards) < EXPECTED_DECK_SIZE:
+        warnings.append(
+            f"{label}: only {len(cards)}/{EXPECTED_DECK_SIZE} cards recognized "
+            f"— prediction may be less accurate."
+        )
+
+    known_names = set(card_list)
+    unrecognized = [c.get("name") for c in cards if c.get("name") not in known_names]
+    if unrecognized:
+        warnings.append(
+            f"{label}: {len(unrecognized)} card(s) not in training data "
+            f"({', '.join(unrecognized)}) — these will be ignored."
+        )
+
+    return warnings
+
+
 def create_card_feature(deck_cards, card_list, prefix):
     """Mirrors create_card_feature() in preprocessing/preprocessing.py."""
     row = {}
@@ -75,7 +121,7 @@ def create_support_card_feature(support_cards, support_list, prefix):
     return row
 
 
-def build_features(team_trophies, opp_trophies, team_cards, opp_cards, team_support, opp_support, card_list, support_list):
+def build_features(team_trophies, opp_trophies, team_cards, opp_cards, team_support, opp_support, card_list, support_list, feature_means=None):
     """
     Build the same feature vector as preprocess_battle() in preprocessing/preprocessing.py.
 
@@ -85,13 +131,17 @@ def build_features(team_trophies, opp_trophies, team_cards, opp_cards, team_supp
         team_support / opp_support: list of dicts with "name", "level", "maxLevel"
         card_list: sorted list of card name strings
         support_list: sorted list of support card name strings
+        feature_means: optional dict of training-set means for fallback values
     """
+    means = feature_means or {}
     row = {
         "team_trophies":   team_trophies,
         "opp_trophies":    opp_trophies,
         "trophy_diff":     team_trophies - opp_trophies,
-        "team_avg_elixir": sum(c.get("elixirCost", 0) for c in team_cards) / len(team_cards) if team_cards else 0,
-        "opp_avg_elixir":  sum(c.get("elixirCost", 0) for c in opp_cards) / len(opp_cards) if opp_cards else 0,
+        "team_avg_elixir": (sum(c.get("elixirCost", 0) for c in team_cards) / len(team_cards))
+                           if team_cards else means.get("team_avg_elixir", 0),
+        "opp_avg_elixir":  (sum(c.get("elixirCost", 0) for c in opp_cards) / len(opp_cards))
+                           if opp_cards else means.get("opp_avg_elixir", 0),
     }
 
     row.update(create_card_feature(team_cards, card_list, "team"))
@@ -115,26 +165,39 @@ def predict_win_prob(team_trophies, opp_trophies, team_cards, opp_cards, team_su
         opp_support:   list of dicts with keys "name", "level", "maxLevel" (optional)
 
     Returns:
-        (P(loss), P(win)) tuple of floats
+        (P(loss), P(win), warnings) — probabilities and a list of warning strings.
     """
     card_list = load_card_list()
     support_list = load_support_list()
+    feature_means = load_feature_means()
+
+    # Validate decks and collect warnings
+    warnings = []
+    warnings.extend(validate_deck(team_cards, card_list, label="Your deck"))
+    warnings.extend(validate_deck(opp_cards, card_list, label="Opponent deck"))
 
     features = build_features(
         team_trophies, opp_trophies,
         team_cards, opp_cards,
         team_support or [], opp_support or [],
         card_list, support_list,
+        feature_means=feature_means,
     )
 
     df = pd.DataFrame([features])
 
     model = load_model()
-    # Align to the exact columns the model was trained on
-    df = df.reindex(columns=model.feature_names_in_, fill_value=0)
+    # Align to the model's training columns, filling missing features
+    # with training-set means instead of 0 to avoid out-of-distribution skew
+    if feature_means:
+        fill_series = pd.Series(feature_means).reindex(model.feature_names_in_, fill_value=0)
+        df = df.reindex(columns=model.feature_names_in_)
+        df = df.fillna(fill_series)
+    else:
+        df = df.reindex(columns=model.feature_names_in_, fill_value=0)
 
     proba = model.predict_proba(df)[0]
-    return proba[0], proba[1]  # (P(loss), P(win))
+    return proba[0], proba[1], warnings  # (P(loss), P(win), warnings)
 
 
 def predict_matchup(team_player, opp_player):
@@ -150,22 +213,36 @@ def predict_matchup(team_player, opp_player):
         opp_player:  dict — same structure for opponent
 
     Returns:
-        (P(loss), P(win), feature_df, model) — probabilities, aligned feature
-        DataFrame, and the loaded model (for explainability).
+        (P(loss), P(win), feature_df, model, warnings) — probabilities, aligned
+        feature DataFrame, loaded model (for explainability), and warning list.
     """
     from preprocessing.preprocessing import preprocess_matchup, load_card_roles
 
     card_list = load_card_list()
     support_list = load_support_list()
     card_roles = load_card_roles()
+    feature_means = load_feature_means()
+
+    # Validate decks and collect warnings
+    team_cards = team_player.get("currentDeck", [])
+    opp_cards = opp_player.get("currentDeck", [])
+    warnings = []
+    warnings.extend(validate_deck(team_cards, card_list, label="Your deck"))
+    warnings.extend(validate_deck(opp_cards, card_list, label="Opponent deck"))
 
     df = preprocess_matchup(team_player, opp_player, card_list, support_list, card_roles)
 
     model = load_model()
-    df = df.reindex(columns=model.feature_names_in_, fill_value=0)
+    # Fill missing columns with training-set means instead of 0
+    if feature_means:
+        fill_series = pd.Series(feature_means).reindex(model.feature_names_in_, fill_value=0)
+        df = df.reindex(columns=model.feature_names_in_)
+        df = df.fillna(fill_series)
+    else:
+        df = df.reindex(columns=model.feature_names_in_, fill_value=0)
 
     proba = model.predict_proba(df)[0]
-    return proba[0], proba[1], df, model  # (P(loss), P(win), features, model)
+    return proba[0], proba[1], df, model, warnings
 
 
 if __name__ == "__main__":
@@ -191,7 +268,7 @@ if __name__ == "__main__":
         {"name": "Elixir Collector", "elixirCost": 6, "level": 11, "maxLevel": 11},
     ]
 
-    pl, pw = predict_win_prob(
+    pl, pw, warns = predict_win_prob(
         team_trophies=7500,
         opp_trophies=7500,
         team_cards=team_cards,
@@ -199,3 +276,7 @@ if __name__ == "__main__":
     )
     print("P(loss) =", pl)
     print("P(win)  =", pw)
+    if warns:
+        print("Warnings:")
+        for w in warns:
+            print(f"  - {w}")

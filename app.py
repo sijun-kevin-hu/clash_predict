@@ -259,10 +259,15 @@ def main():
         # Predict
         with st.spinner("Running prediction..."):
             try:
-                p_loss, p_win, feature_df, model = predict_matchup(team_data, opp_data)
+                p_loss, p_win, feature_df, model, warnings = predict_matchup(team_data, opp_data)
             except Exception as e:
                 st.error(f"Prediction failed: {e}")
                 return
+
+        # Show data quality warnings
+        if warnings:
+            for w in warnings:
+                st.warning(w)
 
         # Display results
         st.subheader("Prediction")
