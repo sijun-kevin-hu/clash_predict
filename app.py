@@ -28,77 +28,8 @@ BASE_URL = "https://api.clashroyale.com/v1"
 # API helper
 # ---------------------------------------------------------------------------
 
-DEV_PORTAL = "https://developer.clashroyale.com/api"
-_KEY_NAME = "streamlit-auto"
-
-
-def _get_server_ip() -> str:
-    """Detect this server's outbound IP address."""
-    resp = requests.get("https://api.ipify.org", timeout=10)
-    return resp.text.strip()
-
-
-@st.cache_data(ttl=3600, show_spinner=False)
-def _create_api_token(email: str, password: str) -> str:
-    """Log into the CR developer portal and create/reuse a key for the current IP."""
-    ip = _get_server_ip()
-
-    # Login
-    session = requests.Session()
-    login = session.post(
-        f"{DEV_PORTAL}/login", json={"email": email, "password": password}, timeout=10,
-    )
-    login.raise_for_status()
-
-    # List existing keys — reuse one if it already has our IP
-    keys_resp = session.post(f"{DEV_PORTAL}/apikey/list", timeout=10)
-    keys_resp.raise_for_status()
-    existing = keys_resp.json().get("keys", [])
-
-    for key in existing:
-        if ip in key.get("cidrRanges", []):
-            return key["key"]
-
-    # Revoke old auto-generated keys to stay under the 10-key limit
-    for key in existing:
-        if key.get("name", "") == _KEY_NAME:
-            session.post(
-                f"{DEV_PORTAL}/apikey/revoke", json={"id": key["id"]}, timeout=10,
-            )
-
-    # Create a new key for this IP
-    create = session.post(
-        f"{DEV_PORTAL}/apikey/create",
-        json={"name": _KEY_NAME, "description": "Auto-created for Streamlit Cloud", "cidrRanges": [ip]},
-        timeout=10,
-    )
-    create.raise_for_status()
-    return create.json()["key"]["key"]
-
-
 def _get_api_token() -> str:
-    """Return a valid Clash Royale API token.
-
-    If CR_EMAIL and CR_PASSWORD are set, auto-creates a key for the current IP.
-    Otherwise falls back to a static CLASH_ROYALE_API_TOKEN.
-    """
-    # Auto-key creation (recommended for Streamlit Cloud)
-    email = None
-    password = None
-    try:
-        email = st.secrets["CR_EMAIL"]
-        password = st.secrets["CR_PASSWORD"]
-    except (KeyError, FileNotFoundError):
-        email = os.environ.get("CR_EMAIL")
-        password = os.environ.get("CR_PASSWORD")
-
-    if email and password:
-        try:
-            return _create_api_token(email, password)
-        except Exception as e:
-            st.warning(f"Auto key creation failed ({e}), falling back to static token.")
-
-    # Static token fallback
+    """Return the Clash Royale API token from st.secrets or environment."""
     try:
         return st.secrets["CLASH_ROYALE_API_TOKEN"]
     except (KeyError, FileNotFoundError):
@@ -125,72 +56,8 @@ def fetch_player(player_tag: str) -> dict:
         headers={"Authorization": f"Bearer {token}"},
         timeout=10,
     )
-    if resp.status_code == 403:
-        raise PermissionError(
-            "403 Forbidden — your API token's IP allowlist may not include "
-            "this machine's IP. Update it at developer.clashroyale.com."
-        )
     resp.raise_for_status()
     return resp.json()
-
-
-def fetch_battlelog(player_tag: str) -> list:
-    """Fetch a player's recent battle log from the Clash Royale API.
-
-    Returns an empty list if the profile is private (403) or not found (404).
-    """
-    token = _get_api_token()
-    if not token:
-        return []
-
-    tag = player_tag.strip().lstrip("#").upper()
-    encoded = "%23" + tag
-    url = f"{BASE_URL}/players/{encoded}/battlelog"
-    resp = requests.get(
-        url,
-        headers={"Authorization": f"Bearer {token}"},
-        timeout=10,
-    )
-    if resp.status_code == 403:
-        raise PermissionError(
-            "Battle log is private or the API token's IP allowlist "
-            "doesn't cover this server. Check your token at "
-            "developer.clashroyale.com — the allowed IP must match "
-            "the machine running this app."
-        )
-    resp.raise_for_status()
-    return resp.json()
-
-
-# ---------------------------------------------------------------------------
-# Recent players helper
-# ---------------------------------------------------------------------------
-
-def _init_recent_players():
-    """Initialize session state for recent players if needed."""
-    if "recent_players" not in st.session_state:
-        st.session_state.recent_players = {}  # tag -> name
-
-
-def _add_recent_player(tag: str, name: str):
-    """Add a player to the recent players list."""
-    clean_tag = tag.strip().lstrip("#").upper()
-    st.session_state.recent_players[clean_tag] = name
-
-
-def _get_recent_options() -> list[str]:
-    """Return recent players as display strings for a selectbox."""
-    return [
-        f"{name} (#{tag})"
-        for tag, name in st.session_state.recent_players.items()
-    ]
-
-
-def _parse_selection(selection: str) -> str:
-    """Extract the player tag from a selectbox display string like 'Name (#TAG)'."""
-    if "(#" in selection:
-        return selection.split("(#")[-1].rstrip(")")
-    return selection
 
 
 # ---------------------------------------------------------------------------
@@ -361,113 +228,12 @@ def main():
     st.info("This model is intended for players with close trophy counts. "
             "Predictions may be less accurate for matchups with large trophy differences.")
 
-    _init_recent_players()
-
-    # --- Read URL params for pre-filled tags ---
-    params = st.query_params
-    default_team = params.get("team", "")
-    default_opp = params.get("opp", "")
-
-    # --- Player tag inputs ---
     col1, col2 = st.columns(2)
-
     with col1:
-        team_tag = st.text_input(
-            "Your player tag",
-            value=default_team,
-            placeholder="#ABC123",
-        )
-        # Recent players quick-select for team
-        recent_opts = _get_recent_options()
-        if recent_opts:
-            team_pick = st.selectbox(
-                "Or pick a recent player",
-                [""] + recent_opts,
-                key="team_recent",
-            )
-            if team_pick:
-                team_tag = _parse_selection(team_pick)
-
+        team_tag = st.text_input("Your player tag", placeholder="#ABC123")
     with col2:
-        opp_tag = st.text_input(
-            "Opponent player tag",
-            value=default_opp,
-            placeholder="#XYZ789",
-        )
-        # Recent players quick-select for opponent
-        if recent_opts:
-            opp_pick = st.selectbox(
-                "Or pick a recent player",
-                [""] + recent_opts,
-                key="opp_recent",
-            )
-            if opp_pick:
-                opp_tag = _parse_selection(opp_pick)
+        opp_tag = st.text_input("Opponent player tag", placeholder="#XYZ789")
 
-    # --- Battle log opponent picker ---
-    if team_tag:
-        with st.expander("Pick opponent from your recent battles"):
-            if st.button("Load my battle log"):
-                with st.spinner("Fetching battle log..."):
-                    try:
-                        battles = fetch_battlelog(team_tag)
-                        st.session_state.battlelog = battles
-                        st.session_state.battlelog_tag = team_tag.strip().lstrip("#").upper()
-                    except Exception as e:
-                        st.error(f"Could not fetch battle log: {e}")
-                        st.session_state.battlelog = []
-
-            if st.session_state.get("battlelog"):
-                # Extract unique opponents from 1v1 battles
-                opponents = []
-                seen_tags = set()
-                for battle in st.session_state.battlelog:
-                    opp_list = battle.get("opponent", [])
-                    if len(opp_list) != 1:
-                        continue  # skip non-1v1
-                    opp = opp_list[0]
-                    opp_t = opp.get("tag", "")
-                    if opp_t in seen_tags:
-                        continue
-                    seen_tags.add(opp_t)
-
-                    team_crowns = battle.get("team", [{}])[0].get("crowns", 0)
-                    opp_crowns = opp.get("crowns", 0)
-                    if team_crowns > opp_crowns:
-                        result = "W"
-                    elif team_crowns < opp_crowns:
-                        result = "L"
-                    else:
-                        result = "D"
-
-                    mode = battle.get("gameMode", {}).get("name", "?")
-                    opponents.append({
-                        "tag": opp_t,
-                        "name": opp.get("name", "???"),
-                        "trophies": opp.get("startingTrophies", opp.get("trophies", 0)),
-                        "result": result,
-                        "mode": mode,
-                    })
-
-                if opponents:
-                    opp_display = [
-                        f"{'W' if o['result'] == 'W' else 'L' if o['result'] == 'L' else 'D'}"
-                        f" | {o['name']} ({o['tag']}) | {o['trophies']} trophies | {o['mode']}"
-                        for o in opponents
-                    ]
-                    chosen = st.selectbox(
-                        "Select an opponent from your recent battles:",
-                        [""] + opp_display,
-                        key="battlelog_pick",
-                    )
-                    if chosen:
-                        idx = opp_display.index(chosen)
-                        opp_tag = opponents[idx]["tag"]
-                        st.success(f"Selected: {opponents[idx]['name']} ({opp_tag})")
-                else:
-                    st.info("No 1v1 opponents found in recent battles.")
-
-    # --- Predict ---
     if st.button("Predict", type="primary"):
         if not team_tag or not opp_tag:
             st.warning("Please enter both player tags.")
@@ -483,15 +249,6 @@ def main():
             except Exception as e:
                 st.error(f"Failed to fetch player data: {e}")
                 return
-
-        # Save to recent players
-        _add_recent_player(team_tag, team_data.get("name", "???"))
-        _add_recent_player(opp_tag, opp_data.get("name", "???"))
-
-        # Update URL params so the page is bookmarkable / shareable
-        clean_team = team_tag.strip().lstrip("#").upper()
-        clean_opp = opp_tag.strip().lstrip("#").upper()
-        st.query_params.update({"team": clean_team, "opp": clean_opp})
 
         # Show decks side by side
         left, right = st.columns(2)
