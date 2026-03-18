@@ -312,6 +312,7 @@ def main():
 
         with tab2:
             st.markdown("How each deck breaks down by archetype role.")
+            st.caption("Note: totals may exceed 8 cards per player — each card can belong to multiple roles.")
             show_role_comparison(team_data, opp_data)
 
         with tab3:
