@@ -56,12 +56,20 @@ def fetch_player(player_tag: str) -> dict:
         headers={"Authorization": f"Bearer {token}"},
         timeout=10,
     )
+    if resp.status_code == 403:
+        raise PermissionError(
+            "403 Forbidden — your API token's IP allowlist may not include "
+            "this machine's IP. Update it at developer.clashroyale.com."
+        )
     resp.raise_for_status()
     return resp.json()
 
 
 def fetch_battlelog(player_tag: str) -> list:
-    """Fetch a player's recent battle log from the Clash Royale API."""
+    """Fetch a player's recent battle log from the Clash Royale API.
+
+    Returns an empty list if the profile is private (403) or not found (404).
+    """
     token = _get_api_token()
     if not token:
         return []
@@ -74,6 +82,13 @@ def fetch_battlelog(player_tag: str) -> list:
         headers={"Authorization": f"Bearer {token}"},
         timeout=10,
     )
+    if resp.status_code == 403:
+        raise PermissionError(
+            "Battle log is private or the API token's IP allowlist "
+            "doesn't cover this server. Check your token at "
+            "developer.clashroyale.com — the allowed IP must match "
+            "the machine running this app."
+        )
     resp.raise_for_status()
     return resp.json()
 
