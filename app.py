@@ -28,8 +28,77 @@ BASE_URL = "https://api.clashroyale.com/v1"
 # API helper
 # ---------------------------------------------------------------------------
 
+DEV_PORTAL = "https://developer.clashroyale.com/api"
+_KEY_NAME = "streamlit-auto"
+
+
+def _get_server_ip() -> str:
+    """Detect this server's outbound IP address."""
+    resp = requests.get("https://api.ipify.org", timeout=10)
+    return resp.text.strip()
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def _create_api_token(email: str, password: str) -> str:
+    """Log into the CR developer portal and create/reuse a key for the current IP."""
+    ip = _get_server_ip()
+
+    # Login
+    session = requests.Session()
+    login = session.post(
+        f"{DEV_PORTAL}/login", json={"email": email, "password": password}, timeout=10,
+    )
+    login.raise_for_status()
+
+    # List existing keys — reuse one if it already has our IP
+    keys_resp = session.post(f"{DEV_PORTAL}/apikey/list", timeout=10)
+    keys_resp.raise_for_status()
+    existing = keys_resp.json().get("keys", [])
+
+    for key in existing:
+        if ip in key.get("cidrRanges", []):
+            return key["key"]
+
+    # Revoke old auto-generated keys to stay under the 10-key limit
+    for key in existing:
+        if key.get("name", "") == _KEY_NAME:
+            session.post(
+                f"{DEV_PORTAL}/apikey/revoke", json={"id": key["id"]}, timeout=10,
+            )
+
+    # Create a new key for this IP
+    create = session.post(
+        f"{DEV_PORTAL}/apikey/create",
+        json={"name": _KEY_NAME, "description": "Auto-created for Streamlit Cloud", "cidrRanges": [ip]},
+        timeout=10,
+    )
+    create.raise_for_status()
+    return create.json()["key"]["key"]
+
+
 def _get_api_token() -> str:
-    """Return the Clash Royale API token from st.secrets or environment."""
+    """Return a valid Clash Royale API token.
+
+    If CR_EMAIL and CR_PASSWORD are set, auto-creates a key for the current IP.
+    Otherwise falls back to a static CLASH_ROYALE_API_TOKEN.
+    """
+    # Auto-key creation (recommended for Streamlit Cloud)
+    email = None
+    password = None
+    try:
+        email = st.secrets["CR_EMAIL"]
+        password = st.secrets["CR_PASSWORD"]
+    except (KeyError, FileNotFoundError):
+        email = os.environ.get("CR_EMAIL")
+        password = os.environ.get("CR_PASSWORD")
+
+    if email and password:
+        try:
+            return _create_api_token(email, password)
+        except Exception as e:
+            st.warning(f"Auto key creation failed ({e}), falling back to static token.")
+
+    # Static token fallback
     try:
         return st.secrets["CLASH_ROYALE_API_TOKEN"]
     except (KeyError, FileNotFoundError):
