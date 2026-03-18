@@ -259,7 +259,9 @@ def main():
         # Predict
         with st.spinner("Running prediction..."):
             try:
-                p_loss, p_win, feature_df, model, warnings = predict_matchup(team_data, opp_data)
+                result = predict_matchup(team_data, opp_data)
+                p_loss, p_win, feature_df, model = result[:4]
+                warnings = result[4] if len(result) > 4 else []
             except Exception as e:
                 st.error(f"Prediction failed: {e}")
                 return
