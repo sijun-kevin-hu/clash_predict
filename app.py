@@ -5,6 +5,7 @@ Enter two player tags, fetch their current decks from the API,
 and predict the win probability using the trained XGBoost model.
 """
 
+import importlib
 import os
 import numpy as np
 import pandas as pd
@@ -13,6 +14,8 @@ import requests
 import shap
 from dotenv import load_dotenv
 
+import inference.predict
+importlib.reload(inference.predict)
 from inference.predict import predict_matchup
 from preprocessing.preprocessing import ROLE_CATEGORIES
 
@@ -259,7 +262,9 @@ def main():
         # Predict
         with st.spinner("Running prediction..."):
             try:
-                p_loss, p_win, feature_df, model, warnings = predict_matchup(team_data, opp_data)
+                result = predict_matchup(team_data, opp_data)
+                p_loss, p_win, feature_df, model = result[:4]
+                warnings = result[4] if len(result) > 4 else []
             except Exception as e:
                 st.error(f"Prediction failed: {e}")
                 return
