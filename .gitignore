@@ -4,6 +4,8 @@
 __pycache__/
 *.pyc
 processed/
+!data/processed/card_list.json
+!data/processed/support_list.json
 raw_data/
 raw/
 clash_predict.egg-info
