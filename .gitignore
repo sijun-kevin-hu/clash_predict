@@ -10,3 +10,5 @@ clash_predict.egg-info
 *.joblib
 .claude
 !xgb_clash_model.joblib
+!card_list.json
+!support_list.json
