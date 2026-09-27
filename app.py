@@ -21,7 +21,7 @@ from preprocessing.preprocessing import ROLE_CATEGORIES
 
 load_dotenv(".env.local")
 
-BASE_URL = "https://api.clashroyale.com/v1"
+BASE_URL = "https://proxy.royaleapi.dev/v1"
 
 
 # ---------------------------------------------------------------------------
