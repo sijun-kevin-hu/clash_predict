@@ -4,7 +4,7 @@ import requests
 import json
 from pathlib import Path
 
-BASE_URL = "https://api.clashroyale.com/v1/cards"
+BASE_URL = "https://proxy.royaleapi.dev/v1/cards"
 CARD_CACHE = Path("data/processed/card_list.json")
 SUPPORT_CACHE = Path("data/processed/support_list.json")
 
