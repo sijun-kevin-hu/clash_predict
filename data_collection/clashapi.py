@@ -22,7 +22,7 @@ from dotenv import load_dotenv
 
 load_dotenv(".env.local")
 
-BASE_URL = "https://api.clashroyale.com/v1"
+BASE_URL = "https://proxy.royaleapi.dev/v1"
 TOKEN = os.environ["CLASH_ROYALE_API_TOKEN"]
 HEADERS = {"Authorization": f"Bearer {TOKEN}"}
 
